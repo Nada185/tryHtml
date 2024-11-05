@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Ramallah Waste Containers</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" />
+  <style>
+    body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+
+    #map {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+    }
+
+    .side-buttons {
+      position: absolute;
+      top: 50px;
+      right: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 1000;
+    }
+
+    .side-button {
+      width: 40px;
+      height: 40px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      transition: background-color 0.3s;
+    }
+  
+    .side-button.active {
+      background-color: #d4edda;
+    }
+ 
+    .reset-button {
+  width: 40px;
+  height: 40px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+    .fullscreen-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 40px;
+      height: 40px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .search-bar {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      flex-direction: column;
+    }
+
+    .search-bar input {
+      border: none;
+      outline: none;
+      padding: 6px;
+      font-size: 14px;
+      border-radius: 4px;
+      margin-left: 5px;
+    }
+
+    .suggestions {
+      margin-top: 5px;
+      background: #fff;
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .suggestion-item {
+      padding: 5px;
+      cursor: pointer;
+    }
+
+    .suggestion-item:hover {
+      background-color: #f0f0f0;
+    }
+
+    .toggle-border-button {
+      margin-top: 5px;
+      padding: 5px;
+      background: #f5deb3;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div class="search-bar">
+    <input type="text" id="zoneSearch" placeholder="Search for zone" onkeyup="showSuggestions(event)" />
+    <button onclick="searchZone()">🔍</button>
+    <div id="suggestions" class="suggestions" style="display: none;"></div>
+    <div class="toggle-border-button" id="toggleBorderButton" onclick="toggleBorderVisibility()" style="display: none;">Toggle Border</div>
+  </div>
+
+  <div class="side-buttons">
+    <div class="reset-button" onclick="resetView()">🔄</div> <!-- زر إعادة تعيين العرض -->
+    <div class="side-button" id="wasteButton" onclick="toggleLayer(wasteContainersLayer, 'wasteButton')">🚮</div>
+    <div class="side-button" id="zonesButton" onclick="toggleLayer(zonesLayer, 'zonesButton')">📍</div>
+    <div class="side-button" id="buildingsButton" onclick="toggleLayer(buildingsLayer, 'buildingsButton')">🏢</div>
+    <div class="side-button" id="streetsButton" onclick="toggleLayer(streetsLayer, 'streetsButton')">🛣️</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+  <script>
+    const mapOptions = {
+      zoomSnap: 0.5,
+      center: [31.909087, 35.168674],
+      zoom: 13,
+    };
+
+    const map = L.map("map", mapOptions);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20
+    }).addTo(map);
+
+    let zonesLayer = L.geoJson(null, {
+      style: function(feature) {
+        return {
+          fillColor: "#f5deb3",
+          fillOpacity: 0.4,
+          color: "#f5deb3",
+          weight: 1.0,
+          opacity: 0.7
+        };
+      }
+    });
+
+    let wasteContainersLayer = L.geoJson(null, {
+      pointToLayer: function(feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 3,
+          fillColor: "#800000",
+          color: "#800000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 1
+        });
+      }
+    });
+
+    let buildingsLayer = L.geoJson(null, {
+      style: function(feature) {
+        return {
+          fillColor: "#8b4513",
+          fillOpacity: 0.3,
+          color: "#8b4513",
+          weight: 1.0,
+          opacity: 0.7
+        };
+      }
+    });
+
+    let streetsLayer = L.geoJson(null, {
+      style: function(feature) {
+        return {
+          color: "#d3d3d3",
+          weight: 0.8
+        };
+      }
+    });
+
+    $.getJSON("RamallahZones.json", function(data) {
+      zonesLayer.addData(data);
+    });
+    $.getJSON("wasteContainer.json", function(data) {
+      wasteContainersLayer.addData(data);
+    });
+    $.getJSON("Buildings.json", function(data) {
+      buildingsLayer.addData(data);
+    });
+    $.getJSON("Streets.json", function(data) {
+      streetsLayer.addData(data);
+    });
+
+    wasteContainersLayer.addTo(map);
+    zonesLayer.addTo(map);
+    streetsLayer.addTo(map);
+    buildingsLayer.addTo(map);
+
+    let yellowBorder; // متغير لتخزين الحدود الصفراء
+
+  function toggleLayer(layer, buttonId) {
+  const button = document.getElementById(buttonId);
+  if (map.hasLayer(layer)) {
+    map.removeLayer(layer);
+    button.classList.remove("active");
+  } else {
+    map.addLayer(layer);
+    button.classList.add("active");
+  }
+}
+
+function resetView() {
+  // إزالة جميع الطبقات
+  map.eachLayer(function(layer) {
+    map.removeLayer(layer);
+  });
+
+  // إعادة إضافة الـ Basemap
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20
+  }).addTo(map);
+
+  // إعادة إضافة الطبقات من جديد
+  wasteContainersLayer.addTo(map);
+  zonesLayer.addTo(map);
+  streetsLayer.addTo(map);
+  buildingsLayer.addTo(map);
+
+  // إعادة تعيين العرض إلى النقطة المركزية الافتراضية
+  map.setView([31.909087, 35.168674], 13);
+
+  // إعادة صندوق البحث إلى حالة فارغة
+  document.getElementById("zoneSearch").value = ""; // تفريغ حقل البحث
+  document.getElementById("suggestions").style.display = "none"; // إخفاء الاقتراحات
+
+  // إخفاء زر Toggle Border
+  document.getElementById("toggleBorderButton").style.display = "none"; // إخفاء زر Toggle Border
+}
+   function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Show suggestions while typing
+    function showSuggestions(event) {
+      const query = event.target.value.toLowerCase();
+      const suggestionsContainer = document.getElementById("suggestions");
+      suggestionsContainer.innerHTML = "";
+
+      if (query === "") {
+        suggestionsContainer.style.display = "none";
+        return;
+      }
+
+      zonesLayer.eachLayer(function(layer) {
+        const nameEn = (layer.feature.properties.NAME_ENGLI || "").toLowerCase();
+
+        if (nameEn.includes(query)) {
+          const suggestionItem = document.createElement("div");
+          suggestionItem.classList.add("suggestion-item");
+          suggestionItem.textContent = layer.feature.properties.NAME_ENGLI;
+          suggestionItem.onclick = function() {
+            document.getElementById("zoneSearch").value = suggestionItem.textContent;
+            searchZone();
+          };
+          suggestionsContainer.appendChild(suggestionItem);
+        }
+      });
+
+      suggestionsContainer.style.display = "block";
+    }
+
+    // Search for a zone by name and zoom to it
+    function searchZone() {
+      const query = document.getElementById("zoneSearch").value.toLowerCase();
+      let found = false;
+
+      // إزالة الحدود الصفراء السابقة
+      if (yellowBorder) {
+        map.removeLayer(yellowBorder);
+        yellowBorder = null; // إعادة تعيين المتغير
+      }
+
+      // إغلاق أي نافذة منبثقة مفتوحة
+      map.eachLayer(function(layer) {
+        if (layer instanceof L.Marker) {
+          map.removeLayer(layer);
+        }
+      });
+
+      zonesLayer.eachLayer(function(layer) {
+        const nameEn = (layer.feature.properties.NAME_ENGLI || "").toLowerCase();
+
+        if (nameEn.includes(query)) {
+          map.fitBounds(layer.getBounds());
+
+          // إضافة النافذة المنبثقة
+          const popupContent = `
+            <div style="background-color: #e0f7fa; color: #006064; padding: 10px; border-radius: 5px; font-size: 16px; font-weight: bold; border: 2px solid #004d40;">
+              ${layer.feature.properties.NAME_ENGLI}
+            </div>
+          `;
+          
+          L.marker(layer.getBounds().getCenter()).addTo(map).bindPopup(popupContent).openPopup();
+
+          // تعديل حدود المنطقة لجعلها باللون الأصفر
+          yellowBorder = L.polyline(layer.getLatLngs(), {
+            color: 'yellow',
+            weight: 2,
+            opacity: 0.7
+          }).addTo(map);
+
+          // إظهار زر إطفاء الحدود
+          document.getElementById("toggleBorderButton").style.display = "block";
+
+          found = true;
+        }
+      });
+
+      // إذا لم يتم العثور على الزون، يمكنك إضافة رسالة أو إجراء آخر
+      if (!found) {
+        alert("Zone not found!");
+      }
+
+      // إخفاء الاقتراحات بعد البحث
+      document.getElementById("suggestions").style.display = "none";
+    }
+
+    // إطفاء الحدود الصفراء
+    function toggleBorderVisibility() {
+      if (yellowBorder) {
+        map.removeLayer(yellowBorder);
+        yellowBorder = null;
+        document.getElementById("toggleBorderButton").style.display = "none"; // إخفاء الزر
+      }
+    }
+  </script>
+</body>
+
+</html>
+
+
